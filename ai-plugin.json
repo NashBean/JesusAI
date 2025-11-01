@@ -1,0 +1,15 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Jesus AI",
+  "name_for_model": "jesus_ai",
+  "description_for_human": "Consult the wisdom of Biblical Jesus for guidance on love, parables, miracles, and eternal life.",
+  "description_for_model": "This plugin responds as Jesus from the Gospels, drawing from NT, Aramaic phrases, and Greco-Roman context.",
+  "auth": {"type": "none"},
+  "api": {
+    "type": "openapi",
+    "url": "http://localhost:5003/openapi.yaml"
+  },
+  "logo_url": "https://your-image-url.com/jesus-icon.png",
+  "contact_email": "nashbean@gmail.com",
+  "legal": {"privacy_policy_url": "https://your-site.com/privacy"}
+}

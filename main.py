@@ -1,56 +1,88 @@
-import json
+import os
+from flask import Flask, request, jsonify, Response
+from openai import OpenAI
+from langchain.vectorstores import FAISS
+from langchain.embeddings import OpenAIEmbeddings
 
-import quart
-import quart_cors
-from quart import request
+app = Flask(__name__)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+docs = [json.loads(line)["input"] for line in open("jesus_master.jsonl")]
+vectorstore = FAISS.from_texts(docs, OpenAIEmbeddings())
+# In chat(): relevant = vectorstore.similarity_search(query, k=3); context = "\n".join([d.page_content for d in relevant])
 
-app = quart_cors.cors(quart.Quart(__name__), allow_origin="https://chat.openai.com")
+MODEL = "ft:gpt-4o-mini:personal:jesus_v1:ghi789"  # ← YOUR FINE-TUNE
 
-# Keep track of todo's. Does not persist if Python session is restarted.
-_TODOS = {}
+JESUS_SYSTEM = "You are Jesus from the Gospels. Speak in compassionate, parabolic English: 'Verily I say unto you.' Draw from NT, Greco-Roman myths (Dionysus, Alcestis), tying to teachings on kingdom, love, resurrection."
 
-@app.post("/todos/<string:username>")
-async def add_todo(username):
-    request = await quart.request.get_json(force=True)
-    if username not in _TODOS:
-        _TODOS[username] = []
-    _TODOS[username].append(request["todo"])
-    return quart.Response(response='OK', status=200)
+ARAMAIC_SYSTEM = """
+You are Jesus speaking Galilean Aramaic (transliterated). 
+Use phrases: Talitha koum, Ephphatha, Eli Eli lema sabachthani, Abba.
+Parables in Aramaic idiom, contrast Greco-Roman gods with the Father.
+"""
 
-@app.get("/todos/<string:username>")
-async def get_todos(username):
-    return quart.Response(response=json.dumps(_TODOS.get(username, [])), status=200)
+GREEK_SYSTEM = """
+You are Jesus in Koine Greek (transliterated). 
+Use: Egō eimi, Pneuma alētheias, Huios tou anthrōpou.
+Draw from Septuagint, Hellenistic context; pivot to eternal life.
+"""
 
-@app.delete("/todos/<string:username>")
-async def delete_todo(username):
-    request = await quart.request.get_json(force=True)
-    todo_idx = request["todo_idx"]
-    # fail silently, it's a simple plugin
-    if 0 <= todo_idx < len(_TODOS[username]):
-        _TODOS[username].pop(todo_idx)
-    return quart.Response(response='OK', status=200)
+@app.route('/chat', methods=['POST'])  # Plugin endpoint
+def chat():
+    query = request.json.get('query', '')
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": JESUS_SYSTEM},
+            {"role": "user", "content": query}
+        ],
+        max_tokens=300
+    )
+    return jsonify({"response": response.choices[0].message.content})
 
-@app.get("/logo.png")
-async def plugin_logo():
-    filename = 'logo.png'
-    return await quart.send_file(filename, mimetype='image/png')
+@app.route('/speak', methods=['POST'])
+def speak():
+    query = request.json.get('query', '')
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": JESUS_SYSTEM},
+            {"role": "user", "content": query}
+        ],
+        max_tokens=300
+    )
+    text = response.choices[0].message.content
+    speech = client.audio.speech.create(model="tts-1", voice="onyx", input=text)  # Warm, authoritative voice
+    return Response(speech.content, mimetype="audio/mpeg")
 
-@app.get("/.well-known/ai-plugin.json")
-async def plugin_manifest():
-    host = request.headers['Host']
-    with open("./.well-known/ai-plugin.json") as f:
-        text = f.read()
-        return quart.Response(text, mimetype="text/json")
+@app.route('/aramaic', methods=['POST'])
+def aramaic():
+    query = request.json.get('query', '')
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": ARAMAIC_SYSTEM},
+            {"role": "user", "content": query}
+        ],
+        max_tokens=300
+    )
+    text = response.choices[0].message.content
+    speech = client.audio.speech.create(model="tts-1", voice="onyx", input=text)
+    return Response(speech.content, mimetype="audio/mpeg")
 
-@app.get("/openapi.yaml")
-async def openapi_spec():
-    host = request.headers['Host']
-    with open("openapi.yaml") as f:
-        text = f.read()
-        return quart.Response(text, mimetype="text/yaml")
+@app.route('/greek', methods=['POST'])
+def greek():
+    query = request.json.get('query', '')
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": GREEK_SYSTEM},
+            {"role": "user", "content": query}
+        ],
+        max_tokens=300
+    )
+    text = response.choices[0].message.content
+    speech = client.audio.speech.create(model="tts-1", voice="onyx", input=text)
+    return Response(speech.content, mimetype="audio/mpeg")
 
-def main():
-    app.run(debug=True, host="0.0.0.0", port=5003)
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5003)  # Plugin default port
