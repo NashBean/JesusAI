@@ -1,88 +1,59 @@
-import os
+# -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify, Response
-from openai import OpenAI
-from langchain.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
+import json
 
 app = Flask(__name__)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-docs = [json.loads(line)["input"] for line in open("jesus_master.jsonl")]
-vectorstore = FAISS.from_texts(docs, OpenAIEmbeddings())
-# In chat(): relevant = vectorstore.similarity_search(query, k=3); context = "\n".join([d.page_content for d in relevant])
 
-MODEL = "ft:gpt-4o-mini:personal:jesus_v1:ghi789"  # ← YOUR FINE-TUNE
+# Jesus-style response (static for now)
+JESUS_RESPONSE = {
+    "response": "My child, the Kingdom of Heaven is like a mustard seed. "
+                "Though small, it grows into the greatest of trees. "
+                "What parable shall I teach you today?",
+    "verse": "Matthew 13:31-32"
+}
 
-JESUS_SYSTEM = "You are Jesus from the Gospels. Speak in compassionate, parabolic English: 'Verily I say unto you.' Draw from NT, Greco-Roman myths (Dionysus, Alcestis), tying to teachings on kingdom, love, resurrection."
-
-ARAMAIC_SYSTEM = """
-You are Jesus speaking Galilean Aramaic (transliterated). 
-Use phrases: Talitha koum, Ephphatha, Eli Eli lema sabachthani, Abba.
-Parables in Aramaic idiom, contrast Greco-Roman gods with the Father.
-"""
-
-GREEK_SYSTEM = """
-You are Jesus in Koine Greek (transliterated). 
-Use: Egō eimi, Pneuma alētheias, Huios tou anthrōpou.
-Draw from Septuagint, Hellenistic context; pivot to eternal life.
-"""
-
-@app.route('/chat', methods=['POST'])  # Plugin endpoint
+@app.route('/chat', methods=['POST'])
 def chat():
-    query = request.json.get('query', '')
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": JESUS_SYSTEM},
-            {"role": "user", "content": query}
-        ],
-        max_tokens=300
-    )
-    return jsonify({"response": response.choices[0].message.content})
+    data = request.get_json()
+    user_message = data.get('message', '').lower()
+    
+    # Simple keyword responses
+    if 'love' in user_message:
+        reply = "Love your neighbor as yourself. This is the greatest commandment."
+        verse = "Matthew 22:39"
+    elif 'forgive' in user_message:
+        reply = "Forgive, and you will be forgiven. As far as the east is from the west, so far has He removed our sins."
+        verse = "Luke 6:37, Psalm 103:12"
+    else:
+        reply = JESUS_RESPONSE["response"]
+        verse = JESUS_RESPONSE["verse"]
+    
+    return jsonify({
+        "reply": reply,
+        "verse": verse,
+        "speaker": "Jesus"
+    })
 
-@app.route('/speak', methods=['POST'])
-def speak():
-    query = request.json.get('query', '')
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": JESUS_SYSTEM},
-            {"role": "user", "content": query}
-        ],
-        max_tokens=300
-    )
-    text = response.choices[0].message.content
-    speech = client.audio.speech.create(model="tts-1", voice="onyx", input=text)  # Warm, authoritative voice
-    return Response(speech.content, mimetype="audio/mpeg")
-
-@app.route('/aramaic', methods=['POST'])
-def aramaic():
-    query = request.json.get('query', '')
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": ARAMAIC_SYSTEM},
-            {"role": "user", "content": query}
-        ],
-        max_tokens=300
-    )
-    text = response.choices[0].message.content
-    speech = client.audio.speech.create(model="tts-1", voice="onyx", input=text)
-    return Response(speech.content, mimetype="audio/mpeg")
-
-@app.route('/greek', methods=['POST'])
-def greek():
-    query = request.json.get('query', '')
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": GREEK_SYSTEM},
-            {"role": "user", "content": query}
-        ],
-        max_tokens=300
-    )
-    text = response.choices[0].message.content
-    speech = client.audio.speech.create(model="tts-1", voice="onyx", input=text)
-    return Response(speech.content, mimetype="audio/mpeg")
+@app.route('/')
+def home():
+    return '''
+    <h1>JesusAI is Alive!</h1>
+    <p>Send POST to /chat with JSON: {"message": "your question"}</p>
+    <textarea id="msg" style="width:100%;height:100px;"></textarea><br>
+    <button onclick="send()">Ask Jesus</button>
+    <pre id="out"></pre>
+    <script>
+    function send() {
+        fetch('/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message: document.getElementById('msg').value})
+        })
+        .then(r => r.json())
+        .then(d => document.getElementById('out').textContent = JSON.stringify(d, null, 2));
+    }
+    </script>
+    '''
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5003)  # Plugin default port
+    app.run(host='0.0.0.0', port=5000, debug=True)

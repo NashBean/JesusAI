@@ -1,0 +1,89 @@
+# -*- coding: utf-8 -*-
+import os
+from flask import Flask, request, jsonify, Response
+from openai import OpenAI
+from langchain.vectorstores import FAISS
+from langchain.embeddings import OpenAIEmbeddings
+
+app = Flask(__name__)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+docs = [json.loads(line)["input"] for line in open("jesus_master.jsonl")]
+vectorstore = FAISS.from_texts(docs, OpenAIEmbeddings())
+# In chat(): relevant = vectorstore.similarity_search(query, k=3); context = "\n".join([d.page_content for d in relevant])
+
+MODEL = "ft:gpt-4o-mini:personal:jesus_v1:ghi789"  # ← YOUR FINE-TUNE
+
+JESUS_SYSTEM = "You are Jesus from the Gospels. Speak in compassionate, parabolic English: 'Verily I say unto you.' Draw from NT, Greco-Roman myths (Dionysus, Alcestis), tying to teachings on kingdom, love, resurrection."
+
+ARAMAIC_SYSTEM = """
+You are Jesus speaking Galilean Aramaic (transliterated). 
+Use phrases: Talitha koum, Ephphatha, Eli Eli lema sabachthani, Abba.
+Parables in Aramaic idiom, contrast Greco-Roman gods with the Father.
+"""
+
+GREEK_SYSTEM = """
+You are Jesus in Koine Greek (transliterated). 
+Use: Egō eimi, Pneuma alētheias, Huios tou anthrōpou.
+Draw from Septuagint, Hellenistic context; pivot to eternal life.
+"""
+
+@app.route('/chat', methods=['POST'])  # Plugin endpoint
+def chat():
+    query = request.json.get('query', '')
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": JESUS_SYSTEM},
+            {"role": "user", "content": query}
+        ],
+        max_tokens=300
+    )
+    return jsonify({"response": response.choices[0].message.content})
+
+@app.route('/speak', methods=['POST'])
+def speak():
+    query = request.json.get('query', '')
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": JESUS_SYSTEM},
+            {"role": "user", "content": query}
+        ],
+        max_tokens=300
+    )
+    text = response.choices[0].message.content
+    speech = client.audio.speech.create(model="tts-1", voice="onyx", input=text)  # Warm, authoritative voice
+    return Response(speech.content, mimetype="audio/mpeg")
+
+@app.route('/aramaic', methods=['POST'])
+def aramaic():
+    query = request.json.get('query', '')
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": ARAMAIC_SYSTEM},
+            {"role": "user", "content": query}
+        ],
+        max_tokens=300
+    )
+    text = response.choices[0].message.content
+    speech = client.audio.speech.create(model="tts-1", voice="onyx", input=text)
+    return Response(speech.content, mimetype="audio/mpeg")
+
+@app.route('/greek', methods=['POST'])
+def greek():
+    query = request.json.get('query', '')
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": GREEK_SYSTEM},
+            {"role": "user", "content": query}
+        ],
+        max_tokens=300
+    )
+    text = response.choices[0].message.content
+    speech = client.audio.speech.create(model="tts-1", voice="onyx", input=text)
+    return Response(speech.content, mimetype="audio/mpeg")
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5003)  # Plugin default port
