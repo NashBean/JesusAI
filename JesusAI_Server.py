@@ -4,18 +4,20 @@
 
 from flask import Flask, request, jsonify
 import os
+import json
 
 app = Flask(__name__)
 
 # Version
 MAJOR_VERSIOM = 0
 MINOR_VERSION = 1
-FIX_VERSION = 1
+FIX_VERSION = 2
 VERSION_STRING = f"v{MAJOR_VERSION}.{MINOR_VERSION}.{FIX_VERSION}"
 
 #AI
 AI_NAME = "JesusAI"  
 PORT = 5003  
+DATA = json.load(open("data/jesus_comprehensive.json"))
 
 # Core Mustard Seed
 MUSTARD_SEED = (
@@ -211,7 +213,7 @@ RESPONSES = {
         "default": "John 14:6 (KJV): I am the way, the truth, and the life: no man cometh unto the Father, but by me.\n\nWhat do you seek in Me today?"
     }
 
-
+ 
 def get_response(query):
     q = query.lower().strip()
     if not q:
@@ -223,6 +225,13 @@ def get_response(query):
         return RESPONSES["faith"]
     if "sabbath" in q or "seventh" in q or "saturday" in q:
         return RESPONSES["sabbath"]
+    if "parable" in q:
+        parable = q.split("parable of")[-1].strip() if "of" in q else "sower"  # Default
+        if parable in DATA["parables"]:
+            p = DATA["parables"][parable]
+            return f"KJV: {p['kjv']}\n\nGreek: {p['greek_original']}\n\nDeep: {p['deep_wide']}"
+    if "nazareth" in q:
+        return DATA["archaeology"]["nazareth"]
     return RESPONSES["default"]
 
 @app.route("/")
