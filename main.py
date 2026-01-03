@@ -4,6 +4,12 @@ import json
 
 app = Flask(__name__)
 
+# Version
+MAJOR_VERSIOM = 0
+MINOR_VERSION = 1
+FIX_VERSION = 1
+VERSION_STRING = f"v{MAJOR_VERSION}.{MINOR_VERSION}.{FIX_VERSION}"
+
 # Jesus-style response (static for now)
 JESUS_RESPONSE = {
     "response": "My child, the Kingdom of Heaven is like a mustard seed. "
