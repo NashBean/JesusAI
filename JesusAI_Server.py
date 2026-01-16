@@ -19,45 +19,48 @@ from ai_lib.CommonAI import (
     get_response
     )
 
+from ai_lib.bdh_wrapper import load_bdh_model, bdh_generate, bdh_self_learn
+
 app = Flask(__name__)
 
 # Version
 MAJOR_VERSIOM = 0
-MINOR_VERSION = 2
-FIX_VERSION = 2
+MINOR_VERSION = 3
+FIX_VERSION = 0
 VERSION_STRING = f"v{MAJOR_VERSION}.{MINOR_VERSION}.{FIX_VERSION}"
 
 #AI
 AI_NAME = "JesusAI"  
 PORT = 5003  
-DATA = json.load(open("data/jesus_comprehensive.json"))
+DATA_DIR = "data"
+DATA_FILE = os.path.join(DATA_DIR, "jesus_data.json")
 
 CONFIG = load_config()
 logger = setup_logging(CONFIG)
 logger.info(f"{AI_NAME} Server {VERSION_STRING} starting...")
 
-#DATA
-data = load_data()
+KNOWLEDGE = load_data(DATA_FILE)
+BDH_MODEL = load_bdh_model(DATA_FILE)  
+
+DATA = load_data(DATA_FILE)
 response = get_response(data, query)
 
 MUSTARD_SEED = DATA["MUSTARD_SEED"]
 PARABLES = DATA["PARABLES"]
 RESPONSES = DATA["RESPONSES"]
 
-# Use shared from ai-lib
 def get_response(query):
-        return get_response(query)  # Calls ai-lib's get_response
-
+    # Use BDH for deep response
+    prompt = f"Explain {query} in context of Abraham's faith: {KNOWLEDGE.get(q, '')}"
+    return bdh_generate(BDH_MODEL, prompt)
+    
 # Self-learn (updates data.json)
 def self_learn(topic):
-    research = self_research(topic)  # From {AI_NAME}_data.json as string - exec it if needed
-    # Update data.json
-    with open(os.path.join(DATA_DIR, f"{AI_NAME}_data.json"), "r") as f:
-        data = json.load(f)
-    data["new_knowledge"][topic] = research
-    with open(os.path.join(DATA_DIR, f"{AI_NAME}_data.json"), "w") as f:
-        json.dump(data, f, indent=4)
-
+    research = self_research(topic)  # From ai-lib
+    update_data({"learned": {topic: research}}, DATA_FILE)
+    bdh_self_learn(BDH_MODEL, topic, KNOWLEDGE)  # Update BDH model
+    KNOWLEDGE = load_data(DATA_FILE)
+    return f"Learned '{topic}' via BDH: {research[:200]}..."
 
 @app.route("/")
 def home():
