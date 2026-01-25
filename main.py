@@ -1,65 +1,190 @@
 # -*- coding: utf-8 -*-
-from flask import Flask, request, jsonify, Response
+# JesusAI v0.3.2 - Config file for variables, 700707-word max DB, editable by user/Grok/AI, local persistence, OpenAI self-learn
+from flask import Flask, jsonify, request, send_file
+from flask_cors import CORS
+import os
 import json
-
-app = Flask(__name__)
+import sqlite3
+import openai  # For self-learn (optional)
 
 # Version
 MAJOR_VERSIOM = 0
-MINOR_VERSION = 1
-FIX_VERSION = 1
+MINOR_VERSION = 3
+FIX_VERSION = 2
 VERSION_STRING = f"v{MAJOR_VERSION}.{MINOR_VERSION}.{FIX_VERSION}"
 
-# Jesus-style response (static for now)
-JESUS_RESPONSE = {
-    "response": "My child, the Kingdom of Heaven is like a mustard seed. "
-                "Though small, it grows into the greatest of trees. "
-                "What parable shall I teach you today?",
-    "verse": "Matthew 13:31-32"
+AI_NAME = "JesusAI"
+
+app = Flask(__name__)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+CORS(app, origins="https://chat.openai.com")
+
+_TODOS = {}
+_TODOS_FILE = f"{AI_NAME}_todos.json"  # Local todo save
+DB_FILE = f"{AI_NAME}.db"  # Editable DB
+EDIT_KEY = "777"  # Simple private password for edits (change for security)
+MAX_WORDS = 700707  # Enforce limit
+
+
+# Load config from abrahamai.config (fallbacks if missing)
+CONFIG_FILE = f"{AI_NAME}.config"
+config = {
+    "db_file": f"{AI_NAME}.db",
+    "edit_key": "777",
+    "max_words": 700707,
+    "port": 5006,
+    "prophet": "jesus",
+    "endpoint": "/jesus"
 }
+if os.path.exists(CONFIG_FILE):
+    with open(CONFIG_FILE, "r") as f:
+        config.update(json.load(f))
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    data = request.get_json()
-    user_message = data.get('message', '').lower()
-    
-    # Simple keyword responses
-    if 'love' in user_message:
-        reply = "Love your neighbor as yourself. This is the greatest commandment."
-        verse = "Matthew 22:39"
-    elif 'forgive' in user_message:
-        reply = "Forgive, and you will be forgiven. As far as the east is from the west, so far has He removed our sins."
-        verse = "Luke 6:37, Psalm 103:12"
-    else:
-        reply = JESUS_RESPONSE["response"]
-        verse = JESUS_RESPONSE["verse"]
-    
-    return jsonify({
-        "reply": reply,
-        "verse": verse,
-        "speaker": "Jesus"
-    })
+DB_FILE = config["db_file"]
+EDIT_KEY = config["edit_key"]
+MAX_WORDS = config["max_words"]
 
-@app.route('/')
-def home():
-    return '''
-    <h1>JesusAI is Alive!</h1>
-    <p>Send POST to /chat with JSON: {"message": "your question"}</p>
-    <textarea id="msg" style="width:100%;height:100px;"></textarea><br>
-    <button onclick="send()">Ask Jesus</button>
-    <pre id="out"></pre>
-    <script>
-    function send() {
-        fetch('/chat', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({message: document.getElementById('msg').value})
-        })
-        .then(r => r.json())
-        .then(d => document.getElementById('out').textContent = JSON.stringify(d, null, 2));
-    }
-    </script>
-    '''
+# Init/load DB
+conn = sqlite3.connect(DB_FILE)
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS knowledge (id INTEGER PRIMARY KEY, prophet TEXT UNIQUE, content TEXT)''')
+# Insert initial if not exists (your 777k content, trimmed if over)
+initial_abraham = "Your full Abraham knowledge here – from previous expansions."  # Paste your 777k text; code trims below
+c.execute("INSERT OR IGNORE INTO knowledge (prophet, content) VALUES (?, ?)", (config["prophet"], initial_abraham))
+conn.commit()
+conn.close()
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+# Load todos from local file on start
+if os.path.exists(_TODOS_FILE):
+    with open(_TODOS_FILE, "r") as f:
+        _TODOS = json.load(f)
+
+# Helper to get knowledge from DB
+def get_knowledge(prophet):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT content FROM knowledge WHERE prophet = ?", (prophet,))
+    result = c.fetchone()
+    conn.close()
+    return result[0] if result else ""
+
+# Helper to update knowledge in DB (appends or replaces, enforces max words)
+def update_knowledge(prophet, new_content, append=True):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    current = get_knowledge(prophet)
+    updated = current + " " + new_content if append else new_content
+    # Enforce max words (trim oldest if over)
+    words = updated.split()
+    if len(words) > MAX_WORDS:
+        updated = " ".join(words[-MAX_WORDS:])
+    c.execute("INSERT OR REPLACE INTO knowledge (prophet, content) VALUES (?, ?)", (prophet, updated))
+    conn.commit()
+    conn.close()
+
+# Save todos to local file after changes
+def save_todos():
+    with open(_TODOS_FILE, "w") as f:
+        json.dump(_TODOS, f)
+
+@app.route("/todos/<string:username>", methods=["POST"])
+def add_todo(username):
+    try:
+        data = request.get_json(force=True)
+        if username not in _TODOS:
+            _TODOS[username] = []
+        _TODOS[username].append(data.get("todo", ""))
+        save_todos()  # Persist locally
+        return "OK", 200
+    except Exception:
+        return "Bad request", 400
+
+@app.route("/todos/<string:username>", methods=["GET"])
+def get_todos(username):
+    return jsonify(_TODOS.get(username, []))
+
+@app.route("/todos/<string:username>", methods=["DELETE"])
+def delete_todo(username):
+    try:
+        data = request.get_json(force=True)
+        todo_idx = data.get("todo_idx")
+        if isinstance(todo_idx, int) and username in _TODOS and 0 <= todo_idx < len(_TODOS[username]):
+            _TODOS[username].pop(todo_idx)
+            save_todos()  # Persist locally
+        return "OK", 200
+    except Exception:
+        return "Bad request", 400
+
+@app.route(config["endpoint"], methods=["POST"])
+@app.route("/jesus", methods=["POST"])
+def jesus():
+    try:
+        data = request.get_json(force=True)
+        query = data.get("query", "What is a parable?").strip()
+        knowledge = get_knowledge("jesus")
+        # Base response with full DB knowledge
+        reply = (
+            f"I am Jesus of Nazareth, the Son of Man. "
+            f"Regarding '{query}': {knowledge} "
+            f"Blessed are they who hear and believe."
+        )
+        # OpenAI self-learn: If key set, enhance and append new insight to DB
+        api_key = os.getenv("OPENAI_API_KEY")
+        if api_key:
+            openai.api_key = api_key
+            prompt = f"Respond as biblical Jesus, teaching in parables with wisdom. Incorporate this detailed knowledge: {knowledge[:100000]} (truncated for prompt). Query: {query}. Generate new insight to append."
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.7
+            )
+            reply = response.choices[0].message["content"].strip()
+            # AI self-edits: Append new insight to DB
+            new_insight = "New AI-generated insight: " + reply[:1000]  # Truncate to avoid overflow
+            update_knowledge("jesus", new_insight)
+        return jsonify({"reply": reply})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route("/update_knowledge", methods=["POST"])
+def update_knowledge_route():
+    try:
+        data = request.get_json(force=True)
+        if data.get("key") != EDIT_KEY:
+            return "Invalid key", 403
+        prophet = data.get("prophet", config["prophet"])
+        new_content = data.get("new_content", "")
+        append = data.get("append", True)
+        update_knowledge(prophet, new_content, append)
+        return "Knowledge updated", 200
+    except Exception:
+        return "Bad request", 400
+
+@app.route("/logo.png")
+def plugin_logo():
+    logo_path = "logo.png"
+    if os.path.exists(logo_path):
+        return send_file(logo_path, mimetype="image/png")
+    return "Logo not found", 404
+
+@app.route("/.well-known/ai-plugin.json")
+def plugin_manifest():
+    manifest_path = ".well-known/ai-plugin.json"
+    if os.path.exists(manifest_path):
+        with open(manifest_path, encoding="utf-8") as f:
+            text = f.read()
+        return text, 200, {"Content-Type": "application/json"}
+    return "Manifest not found", 404
+
+@app.route("/openapi.yaml")
+def openapi_spec():
+    yaml_path = "openapi.yaml"
+    if os.path.exists(yaml_path):
+        with open(yaml_path, encoding="utf-8") as f:
+            text = f.read()
+        return text, 200, {"Content-Type": "text/yaml"}
+    return "OpenAPI spec not found", 404
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=config["port"], debug=True)

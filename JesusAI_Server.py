@@ -5,9 +5,10 @@
 from flask import Flask, request, jsonify
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ai-lib')))import json
+import json
 
-# Import shared from ai-lib (your submodule)
+#sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ai_lib')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'ai_lib')))
 from ai_lib.CommonAI import (
     get_version, 
     load_config, # save_config,
@@ -23,10 +24,10 @@ from ai_lib.bdh_wrapper import load_bdh_model, bdh_generate, bdh_self_learn
 
 app = Flask(__name__)
 
+# Version
 MAJOR_VERSION = 0
 MINOR_VERSION = 3
-FIX_VERSION = 1
-# Version
+FIX_VERSION = 3
 VERSION_STRING = f"v{MAJOR_VERSION}.{MINOR_VERSION}.{FIX_VERSION}"
 
 #AI
